@@ -1,0 +1,15 @@
+{
+  "name": "frame-9-ai-integration",
+  "version": "1.0.0",
+  "description": "Frame.9 project with Grok and ChatGPT AI integration",
+  "main": "src/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2"
+  }
+}
