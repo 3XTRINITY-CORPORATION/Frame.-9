@@ -1,1 +1,102 @@
-const { openai, xai } = require('../config');\n\n/**\n * Multi-Model Router - intelligently routes requests to the best AI provider\n */\n\nclass MultiModelRouter {\n  constructor() {\n    this.providers = {\n      grok: {\n        name: 'Grok (xAI)',\n        isAvailable: () => !!xai.apiKey,\n        cost: 0.005, // per 1K tokens (approximate)\n        speed: 'fast',\n        specialties: ['reasoning', 'real-time', 'current-events']\n      },\n      chatgpt: {\n        name: 'ChatGPT (OpenAI)',\n        isAvailable: () => !!openai.apiKey,\n        cost: 0.03, // per 1K tokens (approximate)\n        speed: 'balanced',\n        specialties: ['creative', 'coding', 'analysis']\n      },\n      claude: {\n        name: 'Claude (Anthropic)',\n        isAvailable: () => false, // Not yet implemented\n        cost: 0.01,\n        speed: 'thorough',\n        specialties: ['long-form', 'nuanced', 'safety']\n      }\n    };\n  }\n\n  /**\n   * Get available providers\n   */\n  getAvailableProviders() {\n    return Object.entries(this.providers)\n      .filter(([_, config]) => config.isAvailable())\n      .map(([name, config]) => ({ name, ...config }));\n  }\n\n  /**\n   * Intelligently select a provider based on request context\n   */\n  selectProvider(context = {}) {\n    const { preferredProvider, useCase, budget, speed } = context;\n\n    // If user specified preference, use it\n    if (preferredProvider && this.providers[preferredProvider]?.isAvailable()) {\n      return preferredProvider;\n    }\n\n    // Route based on use case\n    if (useCase === 'reasoning' && this.providers.grok.isAvailable()) {\n      return 'grok';\n    }\n    if (useCase === 'coding' && this.providers.chatgpt.isAvailable()) {\n      return 'chatgpt';\n    }\n    if (useCase === 'analysis' && this.providers.chatgpt.isAvailable()) {\n      return 'chatgpt';\n    }\n\n    // Route based on budget\n    if (budget === 'low-cost' && this.providers.grok.isAvailable()) {\n      return 'grok';\n    }\n\n    // Route based on speed\n    if (speed === 'fast' && this.providers.grok.isAvailable()) {\n      return 'grok';\n    }\n\n    // Default fallback\n    const available = this.getAvailableProviders();\n    if (available.length === 0) {\n      throw new Error('No AI providers configured');\n    }\n    return available[0].name.toLowerCase().split(' ')[0];\n  }\n\n  /**\n   * Get provider info\n   */\n  getProviderInfo(provider) {\n    return this.providers[provider] || null;\n  }\n\n  /**\n   * Log routing decision\n   */\n  logRouting(selectedProvider, context) {\n    console.log(`\\n📊 ROUTING DECISION:`);\n    console.log(`  Selected: ${this.providers[selectedProvider].name}`);\n    console.log(`  Context: ${JSON.stringify(context)}`);\n    console.log(`  Available: ${this.getAvailableProviders().map(p => p.name).join(', ')}`);\n    console.log(`\\n`);\n  }\n}\n\nmodule.exports = new MultiModelRouter();\n
+const { openai, xai } = require('../config');
+
+/**
+ * Multi-Model Router - intelligently routes requests to the best AI provider
+ */
+
+class MultiModelRouter {
+  constructor() {
+    this.providers = {
+      grok: {
+        name: 'Grok (xAI)',
+        isAvailable: () => !!xai.apiKey,
+        cost: 0.005, // per 1K tokens (approximate)
+        speed: 'fast',
+        specialties: ['reasoning', 'real-time', 'current-events']
+      },
+      chatgpt: {
+        name: 'ChatGPT (OpenAI)',
+        isAvailable: () => !!openai.apiKey,
+        cost: 0.03, // per 1K tokens (approximate)
+        speed: 'balanced',
+        specialties: ['creative', 'coding', 'analysis']
+      },
+      claude: {
+        name: 'Claude (Anthropic)',
+        isAvailable: () => false, // Not yet implemented
+        cost: 0.01,
+        speed: 'thorough',
+        specialties: ['long-form', 'nuanced', 'safety']
+      }
+    };
+  }
+
+  /**
+   * Get available providers
+   */
+  getAvailableProviders() {
+    return Object.entries(this.providers)
+      .filter(([_, config]) => config.isAvailable())
+      .map(([name, config]) => ({ name, ...config }));
+  }
+
+  /**
+   * Intelligently select a provider based on request context
+   */
+  selectProvider(context = {}) {
+    const { preferredProvider, useCase, budget, speed } = context;
+
+    // If user specified preference, use it
+    if (preferredProvider && this.providers[preferredProvider]?.isAvailable()) {
+      return preferredProvider;
+    }
+
+    // Route based on use case
+    if (useCase === 'reasoning' && this.providers.grok.isAvailable()) {
+      return 'grok';
+    }
+    if (useCase === 'coding' && this.providers.chatgpt.isAvailable()) {
+      return 'chatgpt';
+    }
+    if (useCase === 'analysis' && this.providers.chatgpt.isAvailable()) {
+      return 'chatgpt';
+    }
+
+    // Route based on budget
+    if (budget === 'low-cost' && this.providers.grok.isAvailable()) {
+      return 'grok';
+    }
+
+    // Route based on speed
+    if (speed === 'fast' && this.providers.grok.isAvailable()) {
+      return 'grok';
+    }
+
+    // Default fallback
+    const available = this.getAvailableProviders();
+    if (available.length === 0) {
+      throw new Error('No AI providers configured');
+    }
+    return available[0].name.toLowerCase().split(' ')[0];
+  }
+
+  /**
+   * Get provider info
+   */
+  getProviderInfo(provider) {
+    return this.providers[provider] || null;
+  }
+
+  /**
+   * Log routing decision
+   */
+  logRouting(selectedProvider, context) {
+    console.log(`\n📊 ROUTING DECISION:`);
+    console.log(`  Selected: ${this.providers[selectedProvider].name}`);
+    console.log(`  Context: ${JSON.stringify(context)}`);
+    console.log(`  Available: ${this.getAvailableProviders().map(p => p.name).join(', ')}`);
+    console.log(`\n`);
+  }
+}
+
+module.exports = new MultiModelRouter();

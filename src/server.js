@@ -64,8 +64,8 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Start server
-app.listen(port, () => {
+// Start server (only when run directly, so tests can import the app)
+if (require.main === module) app.listen(port, () => {
   console.log(`\n✨ Frame.9 AI Gateway started`);
   console.log(`📍 Server: http://localhost:${port}`);
   console.log(`🔗 Health: http://localhost:${port}/ai/health`);
