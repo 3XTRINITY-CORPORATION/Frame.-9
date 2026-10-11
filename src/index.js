@@ -1,49 +1,65 @@
 const express = require('express');
-const { generateText } = require('./services/aiProvider');
-const { port, aiProvider } = require('./config');
+const config = require('./config');
+const { requireServiceToken } = require('./middleware/serviceAuth');
+const { createRateLimiter } = require('./middleware/rateLimit');
+const { validateChatBody } = require('./validateChat');
 
-const app = express();
-app.use(express.json());
+function createApp({
+  generateText = require('./services/aiProvider').generateText,
+  defaultProvider = config.aiProvider,
+  rateLimit = { windowMs: 60_000, max: 30 }
+} = {}) {
+  const app = express();
+  app.disable('x-powered-by');
+  app.use(express.json({ limit: '32kb' }));
 
-app.get('/health', (req, res) => {
-  res.json({ ok: true, provider: aiProvider, service: 'Frame.9 AI gateway' });
-});
+  // Public liveness probe: no keys, provider names or config values.
+  app.get('/health', (req, res) => {
+    res.json({ ok: true, service: 'Frame.9 AI gateway' });
+  });
 
-app.post('/api/chat', async (req, res) => {
-  try {
-    const {
-      provider = aiProvider,
-      message,
-      messages,
-      model,
-      systemPrompt = 'You are a helpful assistant.'
-    } = req.body || {};
-
-    if (!message && (!Array.isArray(messages) || messages.length === 0)) {
-      return res.status(400).json({ error: 'Missing message or messages array' });
+  app.post('/api/chat', createRateLimiter(rateLimit), requireServiceToken(), async (req, res) => {
+    const { value, error } = validateChatBody(req.body, defaultProvider);
+    if (error) {
+      return res.status(400).json({ ok: false, error });
     }
 
-    const result = await generateText({
-      provider,
-      text: message,
-      messages,
-      model,
-      systemPrompt
-    });
+    try {
+      const result = await generateText({
+        provider: value.provider,
+        text: value.message,
+        messages: value.messages,
+        model: value.model,
+        systemPrompt: value.systemPrompt
+      });
+      return res.json({ ok: true, provider: value.provider, response: result });
+    } catch (err) {
+      console.error('AI provider error:', err.message);
+      return res.status(502).json({ ok: false, error: 'AI provider request failed' });
+    }
+  });
 
-    return res.json({
-      ok: true,
-      provider,
-      response: result
-    });
-  } catch (error) {
-    return res.status(500).json({
-      ok: false,
-      error: error.message
-    });
+  // Malformed / oversized JSON bodies -> 400 / 413 without stack traces.
+  app.use((err, req, res, next) => {
+    if (err && err.type === 'entity.too.large') {
+      return res.status(413).json({ ok: false, error: 'Request body too large' });
+    }
+    if (err && err.type === 'entity.parse.failed') {
+      return res.status(400).json({ ok: false, error: 'Invalid JSON body' });
+    }
+    return next(err);
+  });
+
+  return app;
+}
+
+if (require.main === module) {
+  if (!process.env.FRAME9_SERVICE_TOKEN) {
+    console.warn('FRAME9_SERVICE_TOKEN is not set: POST /api/chat will answer 503 until it is configured.');
   }
-});
+  createApp().listen(config.port, () => {
+    console.log(`Frame.9 AI gateway running on http://localhost:${config.port}`);
+  });
+}
 
-app.listen(port, () => {
-  console.log(`Frame.9 AI gateway running on http://localhost:${port}`);
-});
+module.exports = { createApp };
