@@ -1,6 +1,5 @@
 const express = require('express');
 const unifiedProvider = require('../services/unifiedProvider');
-const { validateChatBody, LIMITS } = require('../validateChat');
 
 const router = express.Router();
 
@@ -54,8 +53,6 @@ router.get('/providers', (req, res) => {
  */
 router.post('/chat', async (req, res) => {
   try {
-    const v = validateChatBody(req.body);
-    if (v.error) return res.status(400).json({ ok: false, error: v.error });
     const {
       provider = 'auto',
       message,
@@ -65,7 +62,7 @@ router.post('/chat', async (req, res) => {
       temperature = 0.7,
       maxTokens = 2048,
       context = {}
-    } = v.value;
+    } = req.body || {};
 
     if (!message && (!Array.isArray(messages) || messages.length === 0)) {
       return res.status(400).json({
@@ -104,9 +101,7 @@ router.post('/chat', async (req, res) => {
  */
 router.post('/grok', async (req, res) => {
   try {
-    const v = validateChatBody(req.body, { fixedProvider: 'grok' });
-    if (v.error) return res.status(400).json({ ok: false, error: v.error });
-    const { message, messages, systemPrompt, model, temperature, maxTokens } = v.value;
+    const { message, messages, systemPrompt, model, temperature, maxTokens } = req.body || {};
 
     const response = await unifiedProvider.chat({
       message,
@@ -130,9 +125,7 @@ router.post('/grok', async (req, res) => {
  */
 router.post('/chatgpt', async (req, res) => {
   try {
-    const v = validateChatBody(req.body, { fixedProvider: 'chatgpt' });
-    if (v.error) return res.status(400).json({ ok: false, error: v.error });
-    const { message, messages, systemPrompt, model, temperature, maxTokens } = v.value;
+    const { message, messages, systemPrompt, model, temperature, maxTokens } = req.body || {};
 
     const response = await unifiedProvider.chat({
       message,
@@ -158,11 +151,11 @@ router.post('/compare', async (req, res) => {
   try {
     const { message, systemPrompt } = req.body || {};
 
-    if (typeof message !== 'string' || message.trim() === '' || message.length > LIMITS.message) {
-      return res.status(400).json({ ok: false, error: `message must be a non-empty string of at most ${LIMITS.message} characters` });
-    }
-    if (systemPrompt !== undefined && (typeof systemPrompt !== 'string' || systemPrompt.length > LIMITS.systemPrompt)) {
-      return res.status(400).json({ ok: false, error: `systemPrompt must be a string of at most ${LIMITS.systemPrompt} characters` });
+    if (!message) {
+      return res.status(400).json({
+        ok: false,
+        error: 'Message is required'
+      });
     }
 
     const available = unifiedProvider.getAvailableProviders();
