@@ -1,4 +1,4 @@
-const { openai, xai } = require('./config');
+const { openai, xai } = require('../config');
 
 async function callOpenAI({ messages, model = openai.model, systemPrompt }) {
   if (!openai.apiKey) {
