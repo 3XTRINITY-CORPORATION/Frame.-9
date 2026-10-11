@@ -6,9 +6,6 @@ const path = require('node:path');
 // Ensure no real provider keys leak into tests.
 delete process.env.OPENAI_API_KEY;
 delete process.env.XAI_API_KEY;
-const TOKEN = 'boot-test-service-token-0123456789abcdef';
-process.env.FRAME9_SERVICE_TOKEN = TOKEN;
-const auth = { authorization: `Bearer ${TOKEN}` };
 
 test('src/config.js exists and exposes provider config', () => {
   const config = require('../src/config');
@@ -36,7 +33,7 @@ test('app boots: GET / and GET /ai/health respond 200', async () => {
     const root = await fetch(`${base}/`);
     assert.equal(root.status, 200);
     assert.equal((await root.json()).name, 'Frame.9 AI Gateway');
-    const health = await fetch(`${base}/ai/health`, { headers: auth });
+    const health = await fetch(`${base}/ai/health`);
     assert.equal(health.status, 200);
     const body = await health.json();
     assert.equal(body.ok, true);
@@ -47,7 +44,7 @@ test('app boots: GET / and GET /ai/health respond 200', async () => {
 test('POST /ai/chat without message is rejected with 400', async () => {
   await withServer(async (base) => {
     const res = await fetch(`${base}/ai/chat`, {
-      method: 'POST', headers: { 'content-type': 'application/json', ...auth }, body: '{}'
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}'
     });
     assert.equal(res.status, 400);
   });
