@@ -1,0 +1,110 @@
+name: frame9-android
+
+on:
+  pull_request:
+    paths:
+      - 'apps/control-center/**'
+      - '.github/workflows/frame9-android.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: frame9-android-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: apps/control-center
+
+jobs:
+  web:
+    name: web (typecheck, tests incl. RLS on Postgres, build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: ci-only-not-a-secret
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: apps/control-center/.nvmrc
+          cache: npm
+          cache-dependency-path: apps/control-center/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - name: tests (unit + API + RLS/tenant isolation)
+        run: npm test
+        env:
+          TEST_DATABASE_URL: postgres://postgres:ci-only-not-a-secret@127.0.0.1:5432/postgres
+      - run: npm run build
+      - run: npm audit --omit=dev --audit-level=high
+
+  android-debug:
+    name: android debug APK
+    needs: web
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: apps/control-center/.nvmrc
+          cache: npm
+          cache-dependency-path: apps/control-center/package-lock.json
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/wrapper-validation@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+      - run: npm ci
+      - run: npm run build
+      - run: npx cap sync android
+      - name: assembleDebug
+        working-directory: apps/control-center/android
+        run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
+      - name: verify APK (exists, non-empty, package id, SHA-256)
+        id: verify
+        run: |
+          set -euo pipefail
+          APK=android/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          AAPT2=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)aapt2
+          PKG=$("$AAPT2" dump packagename "$APK")
+          echo "package=$PKG"
+          test "$PKG" = "ee.x3trinity.frame9"
+          "$AAPT2" dump permissions "$APK" | tee apk-permissions.txt
+          SHA=$(sha256sum "$APK" | cut -d' ' -f1)
+          SIZE=$(stat -c %s "$APK")
+          echo "$SHA  app-debug.apk" > app-debug.apk.sha256
+          echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
+          {
+            echo "### FRAME.9 debug APK"
+            echo "- commit: \`${{ github.event.pull_request.head.sha || github.sha }}\`"
+            echo "- package: \`$PKG\`"
+            echo "- size: $SIZE bytes"
+            echo "- sha256: \`$SHA\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: frame9-control-center-debug-apk
+          path: |
+            apps/control-center/android/app/build/outputs/apk/debug/app-debug.apk
+            apps/control-center/app-debug.apk.sha256
+            apps/control-center/apk-permissions.txt
+          if-no-files-found: error
+          retention-days: 14

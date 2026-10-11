@@ -1,0 +1,12 @@
+:root { color-scheme: dark; font-family: system-ui, sans-serif; background: #0b0d12; color: #e6e8ee; }
+body { margin: 0; padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom); }
+main { max-width: 960px; margin: 0 auto; padding: 16px 0; }
+form, section { background: #141821; border: 1px solid #252b38; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+input, button, select { font: inherit; padding: 8px 10px; border-radius: 6px; border: 1px solid #333b4d; background: #0f1219; color: inherit; }
+button { cursor: pointer; background: #2a5bd7; border-color: #2a5bd7; }
+button:disabled { opacity: .5; cursor: default; }
+label { display: block; margin-bottom: 8px; }
+.err { background: #3a1418; border: 1px solid #7a2630; padding: 10px; border-radius: 6px; }
+.ok { color: #57d38c; } .bad { color: #ff6b6b; } .warn { color: #f5c451; }
+table { width: 100%; border-collapse: collapse; } td, th { text-align: left; padding: 4px 6px; border-bottom: 1px solid #252b38; }
+code { font-size: .85em; }
