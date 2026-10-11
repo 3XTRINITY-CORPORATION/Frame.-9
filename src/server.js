@@ -1,13 +1,29 @@
 require('dotenv').config();
 const express = require('express');
 const aiRoutes = require('./routes/aiRoutes');
+const { rateLimit } = require('express-rate-limit');
 const { port } = require('./config');
+const { requireServiceToken } = require('./middleware/serviceAuth');
 
+const BODY_LIMIT = '32kb';
+
+function createApp({ aiRateLimitMax = Number(process.env.AI_RATE_LIMIT_MAX) || 30, aiRateLimitWindowMs = 60_000 } = {}) {
 const app = express();
 
+// /ai/* is server-to-server only: per-IP rate limit (also counts failed auth
+// attempts), then bearer FRAME9_SERVICE_TOKEN (fail closed when unset). Both
+// run before any body parsing, so unauthenticated bodies are never read.
+app.use('/ai', rateLimit({
+  windowMs: aiRateLimitWindowMs,
+  limit: aiRateLimitMax,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  handler: (req, res) => res.status(429).json({ ok: false, error: 'Too many requests' })
+}), requireServiceToken());
+
 // Middleware
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ limit: '10mb', extended: true }));
+app.use(express.json({ limit: BODY_LIMIT }));
+app.use(express.urlencoded({ limit: BODY_LIMIT, extended: false }));
 
 // Request logging
 app.use((req, res, next) => {
@@ -54,15 +70,22 @@ app.use((req, res) => {
   });
 });
 
-// Error handler
+// Error handler: map body-parser errors, never leak internals to clients
 app.use((err, req, res, next) => {
-  console.error('❌ Server Error:', err);
-  res.status(500).json({
-    ok: false,
-    error: 'Internal server error',
-    message: err.message
-  });
+  if (err && err.type === 'entity.too.large') {
+    return res.status(413).json({ ok: false, error: 'Payload too large' });
+  }
+  if (err && err.type === 'entity.parse.failed') {
+    return res.status(400).json({ ok: false, error: 'Invalid JSON body' });
+  }
+  console.error('❌ Server Error:', err && err.message);
+  res.status(500).json({ ok: false, error: 'Internal server error' });
 });
+
+return app;
+}
+
+const app = createApp();
 
 // Start server (only when run directly, so tests can import the app)
 if (require.main === module) app.listen(port, () => {
@@ -89,3 +112,4 @@ if (require.main === module) app.listen(port, () => {
 });
 
 module.exports = app;
+module.exports.createApp = createApp;
