@@ -1,4 +1,5 @@
 import express from 'express';
+import { rateLimit } from 'express-rate-limit';
 import { withUser } from './db.mjs';
 import { GitHubError } from './github.mjs';
 
@@ -6,28 +7,26 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const WRITE_ROLES = ['OWNER', 'ADMIN', 'OPERATOR'];
 const AUDIT_ROLES = ['OWNER', 'ADMIN', 'AUDITOR'];
 
-function fixedWindowLimiter({ limit, windowMs, now = () => Date.now() }) {
-  const hits = new Map();
-  return (key) => {
-    const t = now();
-    const h = hits.get(key);
-    if (!h || h.resetAt <= t) { hits.set(key, { count: 1, resetAt: t + windowMs }); return true; }
-    h.count += 1;
-    return h.count <= limit;
-  };
-}
-
 /**
  * @param {{ pool: import('pg').Pool, sessions: ReturnType<import('./auth.mjs').createSessionStore>,
  *   authenticate: (email: string, password: string) => Promise<{id: string, email: string} | null>,
  *   github: { fetchRepoState: (repo: string) => Promise<any> }, repo: string,
- *   corsOrigins?: string[], loginLimit?: number }} deps
+ *   corsOrigins?: string[], loginLimit?: number, apiLimit?: number, snapshotLimit?: number }} deps
  */
-export function createApp({ pool, sessions, authenticate, github, repo, corsOrigins = [], loginLimit = 10 }) {
+export function createApp({ pool, sessions, authenticate, github, repo, corsOrigins = [], loginLimit = 10, apiLimit = 300, snapshotLimit = 10 }) {
   const app = express();
   app.disable('x-powered-by');
   app.use(express.json({ limit: '16kb' }));
-  const loginAllowed = fixedWindowLimiter({ limit: loginLimit, windowMs: 60_000 });
+  const limiter = (limit, keyGenerator) => rateLimit({
+    windowMs: 60_000, limit, standardHeaders: 'draft-8', legacyHeaders: false,
+    ...(keyGenerator ? { keyGenerator } : {}),
+    handler: (_req, res) => res.status(429).json({ error: 'RATE_LIMITED' }),
+  });
+  // Per-IP ceiling on every API route, stricter on login; per-session on
+  // snapshot creation (each one costs GitHub API quota).
+  const apiLimiter = limiter(apiLimit);
+  const loginLimiter = limiter(loginLimit);
+  const snapshotLimiter = limiter(snapshotLimit, (req) => `user:${req.user.id}`);
 
   app.use((req, res, next) => {
     res.set('cache-control', 'no-store');
@@ -43,11 +42,12 @@ export function createApp({ pool, sessions, authenticate, github, repo, corsOrig
     next();
   });
 
+  app.use('/api', apiLimiter);
+
   app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
-  app.post('/api/auth/login', async (req, res, next) => {
+  app.post('/api/auth/login', loginLimiter, async (req, res, next) => {
     try {
-      if (!loginAllowed(req.ip)) return res.status(429).json({ error: 'RATE_LIMITED' });
       const { email, password } = req.body ?? {};
       if (typeof email !== 'string' || typeof password !== 'string' || email.length > 254 || password.length > 1024) {
         return res.status(400).json({ error: 'INVALID_INPUT' });
@@ -110,7 +110,7 @@ export function createApp({ pool, sessions, authenticate, github, repo, corsOrig
     } catch (err) { next(err); }
   });
 
-  app.post('/api/orgs/:orgId/snapshots', requireAuth, requireOrg, async (req, res, next) => {
+  app.post('/api/orgs/:orgId/snapshots', requireAuth, snapshotLimiter, requireOrg, async (req, res, next) => {
     const orgId = req.params.orgId;
     try {
       const role = await withUser(pool, req.user.id, (c) => roleIn(c, orgId));

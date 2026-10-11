@@ -27,7 +27,7 @@ describe.skipIf(!DB_URL)('Control Center API vertical slice: auth → GitHub →
       await addMember(pool, org, id, role);
     }
     const app = createApp({ pool, sessions: createSessionStore(), authenticate: localAuthenticator(pool), github,
-      repo: '3XTRINITY-CORPORATION/Frame.-9', loginLimit: 50 });
+      repo: '3XTRINITY-CORPORATION/Frame.-9', loginLimit: 50, snapshotLimit: 2 });
     server = app.listen(0);
     await new Promise((r) => server.once('listening', r));
     base = `http://127.0.0.1:${server.address().port}`;
@@ -92,6 +92,12 @@ describe.skipIf(!DB_URL)('Control Center API vertical slice: auth → GitHub →
     expect((await (await call(`/api/orgs/${orgB}/snapshots/latest`, { token: t })).json()).snapshot).toBeNull();
   });
 
+  it('snapshot creation is rate-limited per user (GitHub quota protection)', async () => {
+    // op@ already created 2 snapshots above; limit is 2/min.
+    const res = await call(`/api/orgs/${orgA}/snapshots`, { token: await login('op@t.local'), method: 'POST' });
+    expect(res.status).toBe(429);
+  });
+
   it('logout invalidates the session', async () => {
     const t = await login('op@t.local');
     expect((await call('/api/auth/logout', { token: t, method: 'POST' })).status).toBe(204);
@@ -116,5 +122,14 @@ describe('login rate limit (no DB needed)', () => {
     const codes = [(await post()).status, (await post()).status, (await post()).status];
     s.close();
     expect(codes).toEqual([401, 401, 429]);
+  });
+
+  it('every /api route has a per-IP ceiling', async () => {
+    const app = createApp({ pool: null, sessions: createSessionStore(), authenticate: async () => null, github: {}, repo: 'o/r', apiLimit: 2 });
+    const s = app.listen(0); await new Promise((r) => s.once('listening', r));
+    const u = `http://127.0.0.1:${s.address().port}/api/health`;
+    const codes = [(await fetch(u)).status, (await fetch(u)).status, (await fetch(u)).status];
+    s.close();
+    expect(codes).toEqual([200, 200, 429]);
   });
 });
