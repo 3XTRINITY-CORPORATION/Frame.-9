@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">FRAME.9 Control Center</string>
+    <string name="title_activity_main">FRAME.9 Control Center</string>
+    <string name="package_name">ee.x3trinity.frame9</string>
+    <string name="custom_url_scheme">ee.x3trinity.frame9</string>
+</resources>

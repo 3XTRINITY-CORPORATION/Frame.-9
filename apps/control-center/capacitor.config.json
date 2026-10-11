@@ -1,0 +1,9 @@
+{
+  "appId": "ee.x3trinity.frame9",
+  "appName": "FRAME.9 Control Center",
+  "webDir": "dist",
+  "android": {
+    "allowMixedContent": false,
+    "webContentsDebuggingEnabled": false
+  }
+}
